@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+backend/venv/
+venv/
+env/
+.env
+
+# Environment / secrets
+.env.production
+*.env
+
+# Test / coverage
+backend/.pytest_cache/
+backend/htmlcov/
+backend/.coverage
+backend/coverage.xml
+
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+mobile/node_modules/
+.npm
+
+# Docker volumes (local data)
+postgres_data/
+qr_codes/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user

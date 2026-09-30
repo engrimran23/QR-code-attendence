@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QR Attendance Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #1a1a2e; color: #fff; min-height: 100vh; }
+
+    header {
+      background: #16213e;
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid #0f3460;
+    }
+    header h1 { font-size: 18px; color: #e94560; }
+    #status-dot { width: 12px; height: 12px; border-radius: 50%; background: #aaa; display: inline-block; margin-right: 6px; }
+    #status-dot.online { background: #4caf50; }
+    #status-dot.offline { background: #f44336; }
+
+    .main { display: flex; flex-direction: column; align-items: center; padding: 20px; gap: 20px; }
+
+    /* Scanner box */
+    #reader { width: 100%; max-width: 380px; border-radius: 12px; overflow: hidden; border: 3px solid #0f3460; }
+
+    /* Result card */
+    #result-card {
+      width: 100%; max-width: 380px;
+      background: #16213e;
+      border-radius: 12px;
+      padding: 20px;
+      border: 2px solid #0f3460;
+      display: none;
+      animation: slideIn 0.3s ease;
+    }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+    #result-card.success { border-color: #4caf50; }
+    #result-card.late { border-color: #ff9800; }
+    #result-card.error { border-color: #f44336; }
+    #result-card.duplicate { border-color: #2196f3; }
+
+    .student-photo {
+      width: 70px; height: 70px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 3px solid #0f3460;
+      float: right;
+    }
+    .student-name { font-size: 22px; font-weight: bold; margin-bottom: 4px; }
+    .student-meta { font-size: 13px; color: #aaa; margin-bottom: 10px; }
+    .status-badge {
+      display: inline-block;
+      padding: 5px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    .badge-present { background: #4caf50; color: #fff; }
+    .badge-late { background: #ff9800; color: #fff; }
+    .badge-error { background: #f44336; color: #fff; }
+    .badge-duplicate { background: #2196f3; color: #fff; }
+    .checkin-time { font-size: 12px; color: #aaa; margin-top: 6px; }
+
+    /* Offline queue indicator */
+    #offline-bar {
+      width: 100%; max-width: 380px;
+      background: #f44336;
+      color: #fff;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      display: none;
+      justify-content: space-between;
+      align-items: center;
+    }
+    #sync-btn {
+      background: #fff;
+      color: #f44336;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    /* Config panel */
+    #config-panel {
+      width: 100%; max-width: 380px;
+      background: #16213e;
+      border-radius: 12px;
+      padding: 16px;
+      border: 2px solid #0f3460;
+    }
+    #config-panel label { font-size: 12px; color: #aaa; display: block; margin-bottom: 4px; margin-top: 10px; }
+    #config-panel input, #config-panel select {
+      width: 100%; padding: 8px 10px;
+      background: #0f3460; border: 1px solid #1a4b8c;
+      border-radius: 6px; color: #fff; font-size: 14px;
+    }
+    #save-config {
+      margin-top: 14px; width: 100%;
+      background: #e94560; border: none;
+      color: #fff; padding: 10px;
+      border-radius: 8px; font-size: 14px;
+      cursor: pointer; font-weight: bold;
+    }
+    #save-config:hover { background: #c73652; }
+
+    /* Counter strip */
+    #counter-strip {
+      width: 100%; max-width: 380px;
+      display: flex; gap: 10px;
+    }
+    .counter {
+      flex: 1; background: #16213e;
+      border-radius: 10px; padding: 10px;
+      text-align: center; border: 1px solid #0f3460;
+    }
+    .counter .num { font-size: 26px; font-weight: bold; }
+    .counter .lbl { font-size: 11px; color: #aaa; margin-top: 2px; }
+    .counter.present .num { color: #4caf50; }
+    .counter.late .num { color: #ff9800; }
+    .counter.absent .num { color: #f44336; }
+
+    /* Sound toggle */
+    #sound-toggle { cursor: pointer; font-size: 20px; background: none; border: none; color: #fff; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>QR Attendance</h1>
+  <div style="display:flex; align-items:center; gap:10px;">
+    <button id="sound-toggle" title="Toggle sound">🔊</button>
+    <span><span id="status-dot"></span><span id="status-text" style="font-size:12px;">checking…</span></span>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- Offline warning bar -->
+  <div id="offline-bar">
+    <span id="offline-count">0 scans queued offline</span>
+    <button id="sync-btn" onclick="syncOffline()">Sync Now</button>
+  </div>
+
+  <!-- Live counters -->
+  <div id="counter-strip">
+    <div class="counter present"><div class="num" id="cnt-present">0</div><div class="lbl">Present</div></div>
+    <div class="counter late"><div class="num" id="cnt-late">0</div><div class="lbl">Late</div></div>
+    <div class="counter absent"><div class="num" id="cnt-absent">-</div><div class="lbl">Absent</div></div>
+  </div>
+
+  <!-- Camera scanner -->
+  <div id="reader"></div>
+
+  <!-- Result card -->
+  <div id="result-card">
+    <img id="student-photo" class="student-photo" src="" alt="" style="display:none;" />
+    <div class="student-name" id="res-name"></div>
+    <div class="student-meta" id="res-meta"></div>
+    <span class="status-badge" id="res-badge"></span>
+    <div class="checkin-time" id="res-time"></div>
+  </div>
+
+  <!-- Config -->
+  <div id="config-panel">
+    <strong style="font-size:14px;">Scanner Settings</strong>
+    <label>Backend URL</label>
+    <input id="cfg-url" type="text" placeholder="http://localhost:8000" />
+    <label>Branch ID</label>
+    <input id="cfg-branch" type="number" placeholder="1" />
+    <label>Auth Token (paste from login)</label>
+    <input id="cfg-token" type="text" placeholder="Bearer eyJ..." />
+    <button id="save-config" onclick="saveConfig()">Save & Start Scanner</button>
+  </div>
+
+</div>
+
+<!-- Beep sounds (base64 tiny WAV) -->
+<audio id="beep-ok" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA="></audio>
+<audio id="beep-err" src="data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA="></audio>
+
+<script>
+  // ── Config ───────────────────────────────────────────────
+  let config = JSON.parse(localStorage.getItem("scanner_config") || "{}");
+  let soundOn = true;
+  let scanning = true;
+  let offlineQueue = JSON.parse(localStorage.getItem("offline_queue") || "[]");
+  let counters = { present: 0, late: 0 };
+  let html5QrCode = null;
+  let lastToken = "";
+  let lastScanTime = 0;
+  const SCAN_COOLDOWN_MS = 3000;
+
+  // ── DOM refs ─────────────────────────────────────────────
+  const resultCard = document.getElementById("result-card");
+  const offlineBar = document.getElementById("offline-bar");
+  const offlineCount = document.getElementById("offline-count");
+
+  // ── Init ─────────────────────────────────────────────────
+  if (config.url) {
+    document.getElementById("cfg-url").value = config.url;
+    document.getElementById("cfg-branch").value = config.branch_id || "";
+    document.getElementById("cfg-token").value = config.token || "";
+    startScanner();
+  }
+
+  updateOfflineBar();
+  checkOnline();
+  setInterval(checkOnline, 10000);
+
+  document.getElementById("sound-toggle").onclick = () => {
+    soundOn = !soundOn;
+    document.getElementById("sound-toggle").textContent = soundOn ? "🔊" : "🔇";
+  };
+
+  // ── Save config & start ───────────────────────────────────
+  function saveConfig() {
+    config = {
+      url: document.getElementById("cfg-url").value.replace(/\/$/, ""),
+      branch_id: parseInt(document.getElementById("cfg-branch").value),
+      token: document.getElementById("cfg-token").value.trim(),
+    };
+    localStorage.setItem("scanner_config", JSON.stringify(config));
+    startScanner();
+  }
+
+  // ── Start html5-qrcode ────────────────────────────────────
+  function startScanner() {
+    document.getElementById("config-panel").style.display = "none";
+    if (html5QrCode) {
+      html5QrCode.stop().catch(() => {});
+    }
+    html5QrCode = new Html5Qrcode("reader");
+    html5QrCode.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 260, height: 260 } },
+      onScanSuccess,
+      () => {}
+    ).catch(err => {
+      showError("Camera error: " + err);
+    });
+    fetchDashboard();
+  }
+
+  // ── On QR scanned ─────────────────────────────────────────
+  async function onScanSuccess(token) {
+    const now = Date.now();
+    if (token === lastToken && now - lastScanTime < SCAN_COOLDOWN_MS) return;
+    lastToken = token;
+    lastScanTime = now;
+
+    if (!navigator.onLine) {
+      queueOffline(token);
+      showResult({
+        success: true,
+        status: "queued",
+        student_name: "Saved offline",
+        message: "No internet — scan queued",
+      });
+      return;
+    }
+
+    try {
+      const res = await fetch(`${config.url}/attendance/scan`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${config.token}`,
+        },
+        body: JSON.stringify({ qr_token: token, branch_id: config.branch_id }),
+      });
+
+      if (res.status === 401) { showError("Session expired — re-enter token in settings"); return; }
+      const data = await res.json();
+      showResult(data);
+      if (data.success && !data.already_scanned) {
+        if (data.status === "present") counters.present++;
+        if (data.status === "late") counters.late++;
+        updateCounters();
+      }
+    } catch (e) {
+      queueOffline(token);
+      showResult({ success: false, status: "queued", student_name: "Saved offline", message: "Network error — queued" });
+    }
+  }
+
+  // ── Display result card ───────────────────────────────────
+  function showResult(data) {
+    resultCard.className = ""; resultCard.style.display = "block";
+    document.getElementById("res-name").textContent = data.student_name || "Unknown";
+    document.getElementById("res-meta").textContent =
+      data.roll_number ? `Roll: ${data.roll_number}  |  Class: ${data.class_name}` : data.message || "";
+    document.getElementById("res-time").textContent =
+      data.check_in_time ? "Check-in: " + new Date(data.check_in_time).toLocaleTimeString() : "";
+
+    const badge = document.getElementById("res-badge");
+    const photo = document.getElementById("student-photo");
+
+    photo.style.display = data.photo_url ? "block" : "none";
+    if (data.photo_url) photo.src = data.photo_url;
+
+    if (data.already_scanned) {
+      resultCard.classList.add("duplicate");
+      badge.className = "status-badge badge-duplicate";
+      badge.textContent = "Already Scanned";
+      playBeep("ok");
+    } else if (!data.success) {
+      resultCard.classList.add("error");
+      badge.className = "status-badge badge-error";
+      badge.textContent = "Error";
+      playBeep("err");
+    } else if (data.status === "late" || data.status === "queued") {
+      resultCard.classList.add(data.status === "queued" ? "duplicate" : "late");
+      badge.className = data.status === "queued" ? "status-badge badge-duplicate" : "status-badge badge-late";
+      badge.textContent = data.status === "queued" ? "Queued Offline" : "Late";
+      playBeep("ok");
+    } else {
+      resultCard.classList.add("success");
+      badge.className = "status-badge badge-present";
+      badge.textContent = "Present";
+      playBeep("ok");
+    }
+
+    clearTimeout(window._resultTimer);
+    window._resultTimer = setTimeout(() => { resultCard.style.display = "none"; }, 4000);
+  }
+
+  function showError(msg) {
+    showResult({ success: false, message: msg });
+  }
+
+  // ── Offline queue ─────────────────────────────────────────
+  function queueOffline(token) {
+    offlineQueue.push({ qr_token: token, scanned_at: new Date().toISOString() });
+    localStorage.setItem("offline_queue", JSON.stringify(offlineQueue));
+    updateOfflineBar();
+  }
+
+  function updateOfflineBar() {
+    if (offlineQueue.length > 0) {
+      offlineBar.style.display = "flex";
+      offlineCount.textContent = `${offlineQueue.length} scan(s) queued offline`;
+    } else {
+      offlineBar.style.display = "none";
+    }
+  }
+
+  async function syncOffline() {
+    if (!config.url || !config.token) { alert("Configure backend first"); return; }
+    if (offlineQueue.length === 0) return;
+    try {
+      const res = await fetch(`${config.url}/attendance/offline-sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${config.token}` },
+        body: JSON.stringify({ branch_id: config.branch_id, scans: offlineQueue }),
+      });
+      const data = await res.json();
+      alert(`Sync complete: ${data.processed} processed, ${data.skipped} skipped`);
+      offlineQueue = [];
+      localStorage.setItem("offline_queue", "[]");
+      updateOfflineBar();
+    } catch (e) {
+      alert("Sync failed: " + e.message);
+    }
+  }
+
+  // ── Dashboard counters ────────────────────────────────────
+  async function fetchDashboard() {
+    if (!config.url || !config.token || !config.branch_id) return;
+    try {
+      const res = await fetch(`${config.url}/attendance/dashboard/today?branch_id=${config.branch_id}`, {
+        headers: { "Authorization": `Bearer ${config.token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      document.getElementById("cnt-present").textContent = data.present;
+      document.getElementById("cnt-late").textContent = data.late;
+      document.getElementById("cnt-absent").textContent = data.absent;
+    } catch (e) {}
+  }
+
+  function updateCounters() {
+    document.getElementById("cnt-present").textContent =
+      parseInt(document.getElementById("cnt-present").textContent || "0") + (counters.justPresent || 0);
+  }
+
+  // ── Online/offline detection ──────────────────────────────
+  function checkOnline() {
+    const dot = document.getElementById("status-dot");
+    const txt = document.getElementById("status-text");
+    if (navigator.onLine) {
+      dot.className = "online"; txt.textContent = "Online";
+      if (offlineQueue.length > 0) syncOffline();
+    } else {
+      dot.className = "offline"; txt.textContent = "Offline";
+    }
+  }
+
+  window.addEventListener("online", () => { checkOnline(); if (offlineQueue.length > 0) syncOffline(); });
+  window.addEventListener("offline", checkOnline);
+
+  // ── Sound ─────────────────────────────────────────────────
+  function playBeep(type) {
+    if (!soundOn) return;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = type === "ok" ? 880 : 300;
+    osc.type = "sine";
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    osc.start(); osc.stop(ctx.currentTime + 0.2);
+  }
+</script>
+</body>
+</html>

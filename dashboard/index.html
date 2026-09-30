@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>QR Attendance — Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #f0f4f8; --card: #ffffff; --primary: #1F4E79;
+      --green: #2e7d32; --orange: #e65100; --red: #c62828; --blue: #1565C0;
+      --border: #dde3ea; --text: #1a1a2e; --muted: #666;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Segoe UI", Arial, sans-serif; background: var(--bg); color: var(--text); }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      position: fixed; top: 0; left: 0; width: 220px; height: 100vh;
+      background: var(--primary); color: #fff; display: flex; flex-direction: column;
+      padding: 20px 0; z-index: 100;
+    }
+    .logo { padding: 0 20px 20px; border-bottom: 1px solid rgba(255,255,255,0.15); }
+    .logo h2 { font-size: 16px; }
+    .logo small { font-size: 11px; opacity: 0.7; }
+    nav a {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 20px; color: rgba(255,255,255,0.8); text-decoration: none;
+      font-size: 13px; cursor: pointer; transition: background 0.2s;
+    }
+    nav a:hover, nav a.active { background: rgba(255,255,255,0.15); color: #fff; }
+    nav a .icon { width: 18px; text-align: center; }
+
+    /* ── Main ── */
+    .main { margin-left: 220px; padding: 24px; min-height: 100vh; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    header h1 { font-size: 20px; font-weight: 600; }
+    .branch-selector select {
+      padding: 7px 12px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 13px; background: #fff;
+    }
+
+    /* ── Cards ── */
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+    .card {
+      background: var(--card); border-radius: 12px; padding: 20px;
+      border: 1px solid var(--border); box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .card .num { font-size: 36px; font-weight: 700; margin: 8px 0 4px; }
+    .card .lbl { font-size: 12px; color: var(--muted); }
+    .card .trend { font-size: 11px; margin-top: 6px; }
+    .card.green .num { color: var(--green); }
+    .card.orange .num { color: var(--orange); }
+    .card.red .num { color: var(--red); }
+    .card.blue .num { color: var(--blue); }
+
+    /* ── Grid ── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+
+    /* ── Table card ── */
+    .table-card { background: var(--card); border-radius: 12px; padding: 20px; border: 1px solid var(--border); }
+    .table-card h3 { font-size: 14px; margin-bottom: 14px; color: var(--primary); }
+    .controls { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+    .controls input, .controls select {
+      padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px;
+      font-size: 13px; background: #fff; flex: 1; min-width: 120px;
+    }
+    .btn {
+      padding: 7px 16px; border: none; border-radius: 8px; cursor: pointer;
+      font-size: 13px; font-weight: 600;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: #16385a; }
+    .btn-green  { background: var(--green);   color: #fff; }
+    .btn-orange { background: var(--orange);  color: #fff; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { background: var(--primary); color: #fff; padding: 9px 12px; text-align: left; }
+    td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #f7fafc; }
+    .badge {
+      display: inline-block; padding: 2px 10px; border-radius: 12px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+    }
+    .badge-present { background: #e8f5e9; color: var(--green); }
+    .badge-late    { background: #fff3e0; color: var(--orange); }
+    .badge-absent  { background: #ffebee; color: var(--red); }
+    .badge-leave   { background: #e3f2fd; color: var(--blue); }
+
+    /* Pct bar */
+    .pct-bar { display: flex; align-items: center; gap: 8px; }
+    .pct-bar .bar { flex: 1; height: 6px; background: #eee; border-radius: 3px; overflow: hidden; }
+    .pct-bar .fill { height: 100%; border-radius: 3px; }
+    .fill-green  { background: var(--green); }
+    .fill-orange { background: var(--orange); }
+    .fill-red    { background: var(--red); }
+
+    /* Pages */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* Low attendance alert */
+    .alert-row td { background: #fff8f8 !important; }
+
+    /* ── QR Scanner Page ── */
+    #scanner-wrap {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 18px; padding-top: 4px;
+    }
+    #scanner-counters {
+      display: grid; grid-template-columns: repeat(3,1fr);
+      gap: 14px; width: 100%; max-width: 520px;
+    }
+    .sc-counter {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 14px; text-align: center;
+    }
+    .sc-counter .sc-num { font-size: 32px; font-weight: 700; }
+    .sc-counter .sc-lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .sc-counter.present .sc-num { color: var(--green); }
+    .sc-counter.late    .sc-num { color: var(--orange); }
+    .sc-counter.absent  .sc-num { color: var(--red); }
+
+    #qr-reader-box {
+      width: 100%; max-width: 420px;
+      border: 3px solid var(--primary); border-radius: 14px; overflow: hidden;
+      background: #000;
+    }
+    #qr-reader-box video { width: 100% !important; }
+
+    #scan-result-card {
+      width: 100%; max-width: 420px;
+      background: var(--card); border: 2px solid var(--border);
+      border-radius: 14px; padding: 18px 20px; display: none;
+      animation: slideDown .25s ease;
+    }
+    @keyframes slideDown { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+    #scan-result-card.ok   { border-color: var(--green); }
+    #scan-result-card.late { border-color: var(--orange); }
+    #scan-result-card.dup  { border-color: var(--blue); }
+    #scan-result-card.err  { border-color: var(--red); }
+
+    .sr-name   { font-size: 20px; font-weight: 700; margin-bottom: 3px; }
+    .sr-meta   { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+    .sr-badge  { display: inline-block; padding: 4px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; }
+    .sr-time   { font-size: 11px; color: var(--muted); margin-top: 6px; }
+    .sr-badge.ok   { background: #e8f5e9; color: var(--green); }
+    .sr-badge.late { background: #fff3e0; color: var(--orange); }
+    .sr-badge.dup  { background: #e3f2fd; color: var(--blue); }
+    .sr-badge.err  { background: #ffebee; color: var(--red); }
+
+    #scan-log-list { width: 100%; max-width: 420px; }
+    .scan-log-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 12px; background: var(--card); border: 1px solid var(--border);
+      border-radius: 8px; margin-bottom: 6px; font-size: 12px;
+    }
+    .scan-log-row .slr-name { font-weight: 600; }
+    .scan-log-row .slr-time { color: var(--muted); }
+    #scanner-start-btn {
+      padding: 11px 32px; background: var(--primary); color: #fff;
+      border: none; border-radius: 10px; font-size: 14px; font-weight: 700;
+      cursor: pointer;
+    }
+    #scanner-start-btn:hover { background: #16385a; }
+    #scanner-status { font-size: 12px; color: var(--muted); }
+
+    /* Login overlay */
+    #login-overlay {
+      position: fixed; inset: 0; background: var(--primary);
+      display: flex; align-items: center; justify-content: center; z-index: 999;
+    }
+    .login-box {
+      background: #fff; border-radius: 16px; padding: 36px 40px; width: 360px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+    .login-box h2 { font-size: 22px; margin-bottom: 6px; color: var(--primary); }
+    .login-box p  { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+    .login-box input {
+      width: 100%; padding: 10px 14px; border: 1px solid var(--border);
+      border-radius: 8px; font-size: 14px; margin-bottom: 12px; display: block;
+    }
+    .login-box .btn { width: 100%; padding: 11px; font-size: 15px; margin-top: 4px; }
+    #login-error { color: var(--red); font-size: 13px; margin-top: 8px; }
+
+    @media (max-width: 900px) {
+      .sidebar { width: 60px; }
+      .sidebar .logo, nav a span { display: none; }
+      .main { margin-left: 60px; }
+      .cards { grid-template-columns: repeat(2, 1fr); }
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Login ── -->
+<div id="login-overlay">
+  <div class="login-box">
+    <h2>QR Attendance</h2>
+    <p>Sign in to the admin dashboard</p>
+    <input id="li-url"   type="text"     placeholder="Backend URL (e.g. http://localhost:8000)" />
+    <input id="li-email" type="email"    placeholder="Email" />
+    <input id="li-pass"  type="password" placeholder="Password" />
+    <button class="btn btn-primary" onclick="doLogin()">Sign In</button>
+    <div id="login-error"></div>
+  </div>
+</div>
+
+<!-- ── Sidebar ── -->
+<div class="sidebar">
+  <div class="logo">
+    <h2>📋 QR Attend</h2>
+    <small id="school-label">Loading…</small>
+  </div>
+  <nav>
+    <a onclick="showPage('today')" class="active"><span class="icon">🏠</span><span>Today</span></a>
+    <a onclick="showPage('daily')"><span class="icon">📅</span><span>Daily Report</span></a>
+    <a onclick="showPage('monthly')"><span class="icon">📊</span><span>Monthly</span></a>
+    <a onclick="showPage('students')"><span class="icon">🎒</span><span>Students</span></a>
+    <a onclick="showPage('lowatt')"><span class="icon">⚠️</span><span>Low Attendance</span></a>
+    <a onclick="showPage('scanner')"><span class="icon">📷</span><span>Scan QR</span></a>
+    <a onclick="showPage('notify')"><span class="icon">💬</span><span>Notifications</span></a>
+    <a onclick="doLogout()" style="margin-top:auto;"><span class="icon">🚪</span><span>Logout</span></a>
+  </nav>
+</div>
+
+<!-- ── Main ── -->
+<div class="main">
+  <header>
+    <h1 id="page-title">Today's Overview</h1>
+    <div class="branch-selector">
+      <select id="branch-select" onchange="onBranchChange()">
+        <option value="">Select Branch</option>
+      </select>
+    </div>
+  </header>
+
+  <!-- TODAY PAGE -->
+  <div id="page-today" class="page active">
+    <div class="cards">
+      <div class="card blue">  <div class="lbl">Total Students</div><div class="num" id="c-total">—</div></div>
+      <div class="card green"> <div class="lbl">Present</div>       <div class="num" id="c-present">—</div></div>
+      <div class="card orange"><div class="lbl">Late</div>          <div class="num" id="c-late">—</div></div>
+      <div class="card red">   <div class="lbl">Absent</div>        <div class="num" id="c-absent">—</div></div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><h3 style="margin-bottom:12px;color:var(--primary)">Attendance Rate</h3>
+        <canvas id="chart-donut" height="220"></canvas></div>
+      <div class="card"><h3 style="margin-bottom:12px;color:var(--primary)">Class-wise Today</h3>
+        <canvas id="chart-bar" height="220"></canvas></div>
+    </div>
+    <div class="table-card">
+      <h3>Today's Class Breakdown</h3>
+      <table><thead><tr>
+        <th>Class</th><th>Section</th><th>Total</th><th>Present</th><th>Late</th><th>Absent</th><th>Rate</th>
+      </tr></thead>
+      <tbody id="class-table"></tbody></table>
+    </div>
+  </div>
+
+  <!-- DAILY PAGE -->
+  <div id="page-daily" class="page">
+    <div class="table-card">
+      <h3>Daily Attendance Report</h3>
+      <div class="controls">
+        <input type="date" id="d-date" />
+        <input type="text" id="d-class" placeholder="Class (optional)" />
+        <input type="text" id="d-section" placeholder="Section" />
+        <button class="btn btn-primary" onclick="loadDaily()">Load</button>
+        <button class="btn btn-green btn-sm" onclick="exportDaily('excel')">⬇ Excel</button>
+        <button class="btn btn-orange btn-sm" onclick="exportDaily('pdf')">⬇ PDF</button>
+      </div>
+      <div id="daily-summary" style="font-size:13px;color:var(--muted);margin-bottom:10px;"></div>
+      <table><thead><tr>
+        <th>#</th><th>Roll</th><th>Name</th><th>Class</th><th>Section</th><th>Status</th><th>Check-in</th><th>Manual</th>
+      </tr></thead>
+      <tbody id="daily-table"></tbody></table>
+    </div>
+  </div>
+
+  <!-- MONTHLY PAGE -->
+  <div id="page-monthly" class="page">
+    <div class="table-card">
+      <h3>Monthly Attendance Report</h3>
+      <div class="controls">
+        <input type="number" id="m-year" placeholder="Year" min="2020" max="2030" style="max-width:90px;" />
+        <select id="m-month" style="max-width:130px;">
+          <option value="1">January</option><option value="2">February</option>
+          <option value="3">March</option><option value="4">April</option>
+          <option value="5">May</option><option value="6">June</option>
+          <option value="7">July</option><option value="8">August</option>
+          <option value="9">September</option><option value="10">October</option>
+          <option value="11">November</option><option value="12">December</option>
+        </select>
+        <input type="text" id="m-class" placeholder="Class (optional)" />
+        <button class="btn btn-primary" onclick="loadMonthly()">Load</button>
+        <button class="btn btn-green btn-sm" onclick="exportMonthly()">⬇ Excel</button>
+      </div>
+      <table><thead><tr>
+        <th>Roll</th><th>Name</th><th>Class</th><th>Working Days</th>
+        <th>Present</th><th>Late</th><th>Absent</th><th>Attendance %</th>
+      </tr></thead>
+      <tbody id="monthly-table"></tbody></table>
+    </div>
+  </div>
+
+  <!-- STUDENTS PAGE -->
+  <div id="page-students" class="page">
+    <div class="table-card">
+      <h3>Student Attendance History</h3>
+      <div class="controls">
+        <input type="text" id="s-search" placeholder="Search by name or roll…" oninput="searchStudents()" style="max-width:220px;" />
+        <input type="date" id="s-from" /><input type="date" id="s-to" />
+        <button class="btn btn-orange btn-sm" onclick="exportStudentPdf()">⬇ PDF</button>
+      </div>
+      <div id="student-search-results"></div>
+      <div id="student-detail"></div>
+    </div>
+  </div>
+
+  <!-- LOW ATTENDANCE -->
+  <div id="page-lowatt" class="page">
+    <div class="table-card">
+      <h3>⚠️ Low Attendance Alert</h3>
+      <div class="controls">
+        <input type="number" id="la-year"  placeholder="Year"  style="max-width:90px;" />
+        <select id="la-month" style="max-width:130px;">
+          <option value="1">January</option><option value="2">February</option>
+          <option value="3">March</option><option value="4">April</option>
+          <option value="5">May</option><option value="6">June</option>
+          <option value="7">July</option><option value="8">August</option>
+          <option value="9">September</option><option value="10">October</option>
+          <option value="11">November</option><option value="12">December</option>
+        </select>
+        <input type="number" id="la-thresh" placeholder="Threshold %" value="75" style="max-width:110px;" />
+        <button class="btn btn-primary" onclick="loadLowAtt()">Check</button>
+      </div>
+      <div id="lowatt-info" style="font-size:13px;color:var(--red);margin-bottom:10px;"></div>
+      <table><thead><tr>
+        <th>Roll</th><th>Name</th><th>Class</th><th>Working Days</th>
+        <th>Present</th><th>Absent</th><th>Attendance %</th>
+      </tr></thead>
+      <tbody id="lowatt-table"></tbody></table>
+    </div>
+  </div>
+
+  <!-- NOTIFICATIONS PAGE -->
+  <div id="page-notify" class="page">
+    <div class="grid-2">
+      <div class="table-card">
+        <h3>Today's Notification Stats</h3>
+        <div id="notify-stats" style="font-size:13px;"></div>
+      </div>
+      <div class="table-card">
+        <h3>Send Absent Alerts Manually</h3>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Sends WhatsApp to parents of all absent students.</p>
+        <input type="date" id="na-date" style="padding:8px;border:1px solid var(--border);border-radius:8px;font-size:13px;width:100%;margin-bottom:10px;" />
+        <button class="btn btn-primary" onclick="sendAbsentAlerts()">Send Absent Alerts</button>
+        <div id="na-result" style="font-size:13px;margin-top:10px;"></div>
+      </div>
+    </div>
+    <div class="table-card">
+      <h3>Notification Logs</h3>
+      <div class="controls">
+        <select id="nl-type" style="max-width:140px;">
+          <option value="">All Types</option>
+          <option value="arrival">Arrival</option>
+          <option value="late">Late</option>
+          <option value="absent">Absent</option>
+          <option value="custom">Custom</option>
+        </select>
+        <select id="nl-status" style="max-width:120px;">
+          <option value="">All Status</option>
+          <option value="sent">Sent</option>
+          <option value="failed">Failed</option>
+          <option value="skipped">Skipped</option>
+        </select>
+        <button class="btn btn-primary" onclick="loadNotifyLogs()">Load</button>
+      </div>
+      <table><thead><tr>
+        <th>Time</th><th>Student</th><th>Type</th><th>Phone</th><th>Status</th><th>Error</th>
+      </tr></thead>
+      <tbody id="notify-table"></tbody></table>
+    </div>
+  </div>
+
+  <!-- QR SCANNER PAGE -->
+  <div id="page-scanner" class="page">
+    <div id="scanner-wrap">
+
+      <div id="scanner-counters">
+        <div class="sc-counter present">
+          <div class="sc-num" id="sc-present">0</div>
+          <div class="sc-lbl">Present Today</div>
+        </div>
+        <div class="sc-counter late">
+          <div class="sc-num" id="sc-late">0</div>
+          <div class="sc-lbl">Late Today</div>
+        </div>
+        <div class="sc-counter absent">
+          <div class="sc-num" id="sc-absent">–</div>
+          <div class="sc-lbl">Absent Today</div>
+        </div>
+      </div>
+
+      <div id="qr-reader-box">
+        <div id="qr-reader" style="width:100%;"></div>
+      </div>
+
+      <button id="scanner-start-btn" onclick="startQrScanner()">📷 Start Camera Scanner</button>
+      <div id="scanner-status"></div>
+
+      <div id="scan-result-card">
+        <div class="sr-name" id="sr-name"></div>
+        <div class="sr-meta" id="sr-meta"></div>
+        <span class="sr-badge" id="sr-badge"></span>
+        <div class="sr-time" id="sr-time"></div>
+      </div>
+
+      <div id="scan-log-list"></div>
+
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let API = "", TOKEN = "", BRANCH_ID = null;
+let donutChart = null, barChart = null;
+let selectedStudentId = null;
+
+// ── Init from localStorage ────────────────────────────────────────────────────
+window.onload = () => {
+  const saved = JSON.parse(localStorage.getItem("dash_config") || "{}");
+  if (saved.api) document.getElementById("li-url").value = saved.api;
+  if (saved.email) document.getElementById("li-email").value = saved.email;
+  if (saved.token) { API = saved.api; TOKEN = saved.token; hideLo(); initDash(); }
+
+  const today = new Date().toISOString().split("T")[0];
+  document.getElementById("d-date").value = today;
+  document.getElementById("na-date").value = today;
+  const now = new Date();
+  document.getElementById("m-year").value = now.getFullYear();
+  document.getElementById("m-month").value = now.getMonth() + 1;
+  document.getElementById("la-year").value = now.getFullYear();
+  document.getElementById("la-month").value = now.getMonth() + 1;
+};
+
+// ── Login ─────────────────────────────────────────────────────────────────────
+async function doLogin() {
+  const url   = document.getElementById("li-url").value.replace(/\/$/, "");
+  const email = document.getElementById("li-email").value;
+  const pass  = document.getElementById("li-pass").value;
+  document.getElementById("login-error").textContent = "";
+  try {
+    const res = await fetch(`${url}/auth/login`, {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({email, password: pass}),
+    });
+    if (!res.ok) { document.getElementById("login-error").textContent = "Invalid email or password"; return; }
+    const data = await res.json();
+    API = url; TOKEN = data.access_token;
+    localStorage.setItem("dash_config", JSON.stringify({api: url, email, token: TOKEN}));
+    hideLo(); initDash();
+  } catch(e) {
+    document.getElementById("login-error").textContent = "Cannot reach server: " + e.message;
+  }
+}
+function hideLo() { document.getElementById("login-overlay").style.display = "none"; }
+function doLogout() { localStorage.removeItem("dash_config"); location.reload(); }
+
+// ── API helper ────────────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  opts.headers = {...(opts.headers||{}), "Authorization": `Bearer ${TOKEN}`};
+  const res = await fetch(API + path, opts);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function apiDownload(path) {
+  const res = await fetch(API + path, {headers: {"Authorization": `Bearer ${TOKEN}`}});
+  if (!res.ok) { alert("Export failed"); return; }
+  const cd = res.headers.get("Content-Disposition") || "";
+  const fname = cd.split("filename=")[1] || "report";
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = fname; a.click();
+}
+
+// ── Init dash ─────────────────────────────────────────────────────────────────
+async function initDash() {
+  const data = await api("/auth/me");
+  const branches = await api("/schools/branches/");
+  const sel = document.getElementById("branch-select");
+  sel.innerHTML = "";
+  branches.forEach(b => {
+    const o = document.createElement("option");
+    o.value = b.id; o.textContent = b.name; sel.appendChild(o);
+  });
+  if (branches.length) { BRANCH_ID = branches[0].id; loadToday(); }
+  document.getElementById("school-label").textContent = data.name;
+}
+
+function onBranchChange() {
+  BRANCH_ID = parseInt(document.getElementById("branch-select").value) || null;
+  if (!BRANCH_ID) return;
+  const p = document.querySelector(".page.active")?.id?.replace("page-", "");
+  if (p === "today") loadToday();
+}
+
+// ── Pages ─────────────────────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll(".page").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll("nav a").forEach(a => a.classList.remove("active"));
+  document.getElementById(`page-${name}`).classList.add("active");
+  event.currentTarget?.classList.add("active");
+  const titles = { today:"Today's Overview", daily:"Daily Report", monthly:"Monthly Report",
+    students:"Student History", lowatt:"Low Attendance Alert", notify:"Notifications",
+    scanner:"📷 Scan QR Code" };
+  document.getElementById("page-title").textContent = titles[name] || "";
+  if (name === "today")   loadToday();
+  if (name === "notify")  { loadNotifyStats(); loadNotifyLogs(); }
+  if (name === "scanner") { initScannerPage(); }
+}
+
+// ── TODAY ─────────────────────────────────────────────────────────────────────
+async function loadToday() {
+  if (!BRANCH_ID) return;
+  const [summary, classes] = await Promise.all([
+    api(`/attendance/dashboard/today?branch_id=${BRANCH_ID}`),
+    api(`/attendance/dashboard/classes?branch_id=${BRANCH_ID}`),
+  ]);
+  document.getElementById("c-total").textContent   = summary.total_students;
+  document.getElementById("c-present").textContent = summary.present;
+  document.getElementById("c-late").textContent    = summary.late;
+  document.getElementById("c-absent").textContent  = summary.absent;
+
+  // Donut
+  const dCtx = document.getElementById("chart-donut").getContext("2d");
+  donutChart?.destroy();
+  donutChart = new Chart(dCtx, {
+    type: "doughnut",
+    data: {
+      labels: ["Present", "Late", "Absent"],
+      datasets: [{ data: [summary.present, summary.late, summary.absent],
+        backgroundColor: ["#2e7d32", "#e65100", "#c62828"], borderWidth: 0 }],
+    },
+    options: { plugins: { legend: { position: "bottom" } }, cutout: "68%" },
+  });
+
+  // Bar
+  const bCtx = document.getElementById("chart-bar").getContext("2d");
+  barChart?.destroy();
+  barChart = new Chart(bCtx, {
+    type: "bar",
+    data: {
+      labels: classes.map(c => `${c.class_name}${c.section ? " "+c.section : ""}`),
+      datasets: [
+        { label: "Present", data: classes.map(c => c.present), backgroundColor: "#2e7d32" },
+        { label: "Late",    data: classes.map(c => c.late),    backgroundColor: "#e65100" },
+        { label: "Absent",  data: classes.map(c => c.absent),  backgroundColor: "#c62828" },
+      ],
+    },
+    options: { plugins: { legend: { position: "bottom" } }, scales: { x: { stacked: true }, y: { stacked: true } } },
+  });
+
+  // Table
+  const tb = document.getElementById("class-table");
+  tb.innerHTML = classes.map(c => `
+    <tr>
+      <td>${c.class_name}</td><td>${c.section||"—"}</td><td>${c.total}</td>
+      <td style="color:var(--green);font-weight:600">${c.present}</td>
+      <td style="color:var(--orange);font-weight:600">${c.late}</td>
+      <td style="color:var(--red);font-weight:600">${c.absent}</td>
+      <td>${pctBar(c.attendance_percentage)}</td>
+    </tr>`).join("");
+}
+
+// ── DAILY ─────────────────────────────────────────────────────────────────────
+async function loadDaily() {
+  if (!BRANCH_ID) { alert("Select a branch"); return; }
+  const d = document.getElementById("d-date").value;
+  const cls = document.getElementById("d-class").value;
+  const sec = document.getElementById("d-section").value;
+  let url = `/reports/daily?branch_id=${BRANCH_ID}&report_date=${d}`;
+  if (cls) url += `&class_name=${cls}`;
+  if (sec) url += `&section=${sec}`;
+  const data = await api(url);
+  const s = data.summary;
+  document.getElementById("daily-summary").textContent =
+    `Total: ${s.total}  |  Present: ${s.present}  |  Late: ${s.late}  |  Absent: ${s.absent}  |  Rate: ${s.pct}%`;
+  const tb = document.getElementById("daily-table");
+  tb.innerHTML = data.records.map((r, i) => `
+    <tr>
+      <td>${i+1}</td><td>${r.roll_number}</td><td>${r.student_name}</td>
+      <td>${r.class_name}</td><td>${r.section||"—"}</td>
+      <td><span class="badge badge-${r.status}">${r.status}</span></td>
+      <td>${r.check_in_time ? new Date(r.check_in_time).toLocaleTimeString() : "—"}</td>
+      <td>${r.is_manual ? "Yes" : "No"}</td>
+    </tr>`).join("");
+}
+
+function exportDaily(fmt) {
+  if (!BRANCH_ID) return;
+  const d = document.getElementById("d-date").value;
+  const cls = document.getElementById("d-class").value;
+  let url = `/reports/export/daily/${fmt}?branch_id=${BRANCH_ID}&report_date=${d}`;
+  if (cls) url += `&class_name=${cls}`;
+  apiDownload(url);
+}
+
+// ── MONTHLY ───────────────────────────────────────────────────────────────────
+async function loadMonthly() {
+  if (!BRANCH_ID) { alert("Select a branch"); return; }
+  const y = document.getElementById("m-year").value;
+  const m = document.getElementById("m-month").value;
+  const cls = document.getElementById("m-class").value;
+  let url = `/reports/monthly?branch_id=${BRANCH_ID}&year=${y}&month=${m}`;
+  if (cls) url += `&class_name=${cls}`;
+  const data = await api(url);
+  const tb = document.getElementById("monthly-table");
+  tb.innerHTML = data.students.map(s => `
+    <tr>
+      <td>${s.roll_number}</td><td>${s.student_name}</td><td>${s.class_name}${s.section ? " "+s.section : ""}</td>
+      <td>${s.working_days}</td>
+      <td style="color:var(--green)">${s.present}</td>
+      <td style="color:var(--orange)">${s.late}</td>
+      <td style="color:var(--red)">${s.absent}</td>
+      <td>${pctBar(s.pct)}</td>
+    </tr>`).join("");
+}
+
+function exportMonthly() {
+  if (!BRANCH_ID) return;
+  const y = document.getElementById("m-year").value;
+  const m = document.getElementById("m-month").value;
+  const cls = document.getElementById("m-class").value;
+  let url = `/reports/export/monthly/excel?branch_id=${BRANCH_ID}&year=${y}&month=${m}`;
+  if (cls) url += `&class_name=${cls}`;
+  apiDownload(url);
+}
+
+// ── STUDENTS ──────────────────────────────────────────────────────────────────
+let studentSearchTimer = null;
+async function searchStudents() {
+  clearTimeout(studentSearchTimer);
+  const q = document.getElementById("s-search").value;
+  if (q.length < 2) { document.getElementById("student-search-results").innerHTML = ""; return; }
+  studentSearchTimer = setTimeout(async () => {
+    if (!BRANCH_ID) return;
+    const data = await api(`/students/?branch_id=${BRANCH_ID}&search=${encodeURIComponent(q)}`);
+    const el = document.getElementById("student-search-results");
+    if (!data.length) { el.innerHTML = "<p style='font-size:13px;color:var(--muted)'>No students found.</p>"; return; }
+    el.innerHTML = `<table><thead><tr><th>Roll</th><th>Name</th><th>Class</th><th>Action</th></tr></thead><tbody>
+      ${data.map(s => `<tr>
+        <td>${s.roll_number}</td><td>${s.name}</td><td>${s.class_name}${s.section?" "+s.section:""}</td>
+        <td><button class="btn btn-primary btn-sm" onclick="loadStudentDetail(${s.id})">View</button></td>
+      </tr>`).join("")}
+    </tbody></table>`;
+  }, 400);
+}
+
+async function loadStudentDetail(sid) {
+  selectedStudentId = sid;
+  const from = document.getElementById("s-from").value;
+  const to   = document.getElementById("s-to").value;
+  let url = `/reports/student/${sid}`;
+  if (from || to) url += `?from_date=${from}&to_date=${to}`;
+  const data = await api(url);
+  const s = data.student; const st = data.stats;
+  document.getElementById("student-detail").innerHTML = `
+    <hr style="margin:16px 0"/>
+    <h4 style="margin-bottom:10px">${s.name} — ${s.roll_number} | ${s.class_name}</h4>
+    <div class="cards" style="margin-bottom:16px">
+      <div class="card blue"><div class="lbl">Working Days</div><div class="num">${st.total}</div></div>
+      <div class="card green"><div class="lbl">Present</div><div class="num">${st.present}</div></div>
+      <div class="card orange"><div class="lbl">Late</div><div class="num">${st.late}</div></div>
+      <div class="card red"><div class="lbl">Absent</div><div class="num">${st.absent}</div></div>
+    </div>
+    <p style="font-size:13px;margin-bottom:12px">Attendance: ${pctBar(st.pct)}</p>
+    <table><thead><tr><th>#</th><th>Date</th><th>Day</th><th>Status</th><th>Check-in</th><th>Note</th></tr></thead>
+    <tbody>${data.records.map((r, i) => `<tr>
+      <td>${i+1}</td><td>${r.date}</td>
+      <td>${new Date(r.date).toLocaleDateString("en",{weekday:"short"})}</td>
+      <td><span class="badge badge-${r.status}">${r.status}</span></td>
+      <td>${r.check_in_time ? new Date(r.check_in_time).toLocaleTimeString() : "—"}</td>
+      <td>${r.note||""}</td>
+    </tr>`).join("")}</tbody></table>`;
+}
+
+function exportStudentPdf() {
+  if (!selectedStudentId) { alert("Select a student first"); return; }
+  const from = document.getElementById("s-from").value;
+  const to   = document.getElementById("s-to").value;
+  let url = `/reports/export/student/${selectedStudentId}/pdf`;
+  if (from || to) url += `?from_date=${from}&to_date=${to}`;
+  apiDownload(url);
+}
+
+// ── LOW ATTENDANCE ────────────────────────────────────────────────────────────
+async function loadLowAtt() {
+  if (!BRANCH_ID) { alert("Select a branch"); return; }
+  const y  = document.getElementById("la-year").value;
+  const m  = document.getElementById("la-month").value;
+  const th = document.getElementById("la-thresh").value;
+  const data = await api(`/reports/low-attendance?branch_id=${BRANCH_ID}&year=${y}&month=${m}&threshold=${th}`);
+  document.getElementById("lowatt-info").textContent =
+    `${data.flagged_count} student(s) below ${th}% attendance`;
+  const tb = document.getElementById("lowatt-table");
+  tb.innerHTML = data.students.map(s => `
+    <tr class="alert-row">
+      <td>${s.roll_number}</td><td>${s.student_name}</td>
+      <td>${s.class_name}${s.section?" "+s.section:""}</td>
+      <td>${s.working_days}</td>
+      <td style="color:var(--green)">${s.present}</td>
+      <td style="color:var(--red)">${s.absent}</td>
+      <td>${pctBar(s.pct)}</td>
+    </tr>`).join("");
+}
+
+// ── NOTIFICATIONS ─────────────────────────────────────────────────────────────
+async function loadNotifyStats() {
+  if (!BRANCH_ID) return;
+  const data = await api(`/notifications/stats?branch_id=${BRANCH_ID}`);
+  document.getElementById("notify-stats").innerHTML = `
+    <p>Total sent today: <b>${data.total}</b></p>
+    <p style="color:var(--green)">✅ Sent: ${data.sent}</p>
+    <p style="color:var(--red)">❌ Failed: ${data.failed}</p>
+    <p style="color:var(--muted)">⏭ Skipped: ${data.skipped}</p>
+    <hr style="margin:10px 0"/>
+    <p>Arrival: ${data.by_type.arrival} | Late: ${data.by_type.late} | Absent: ${data.by_type.absent} | Custom: ${data.by_type.custom}</p>`;
+}
+
+async function sendAbsentAlerts() {
+  if (!BRANCH_ID) { alert("Select a branch"); return; }
+  const d = document.getElementById("na-date").value;
+  try {
+    const data = await api(`/notifications/send-absent-alerts?branch_id=${BRANCH_ID}&target_date=${d}`, {method:"POST"});
+    document.getElementById("na-result").innerHTML =
+      `<span style="color:var(--green)">✅ Sent: ${data.sent} | Skipped (no phone): ${data.skipped_no_phone}</span>`;
+  } catch(e) {
+    document.getElementById("na-result").innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
+  }
+}
+
+async function loadNotifyLogs() {
+  if (!BRANCH_ID) return;
+  const type   = document.getElementById("nl-type").value;
+  const status = document.getElementById("nl-status").value;
+  let url = `/notifications/logs?branch_id=${BRANCH_ID}`;
+  if (type)   url += `&notification_type=${type}`;
+  if (status) url += `&status=${status}`;
+  const data = await api(url);
+  const tb = document.getElementById("notify-table");
+  tb.innerHTML = data.map(l => `<tr>
+    <td>${new Date(l.sent_at).toLocaleString()}</td>
+    <td>${l.student_name||l.student_id}</td>
+    <td><span class="badge badge-${l.notification_type==="arrival"?"present":l.notification_type==="late"?"late":l.notification_type==="absent"?"absent":"leave"}">${l.notification_type}</span></td>
+    <td>${l.recipient_phone}</td>
+    <td style="color:${l.status==="sent"?"var(--green)":l.status==="failed"?"var(--red)":"var(--muted)"}">${l.status}</td>
+    <td style="font-size:11px;color:var(--red)">${l.error_message||""}</td>
+  </tr>`).join("");
+}
+
+// ── QR SCANNER ────────────────────────────────────────────────────────────────
+
+let qrScanner = null, scannerRunning = false;
+let lastScanToken = "", lastScanTime = 0;
+const SCAN_COOLDOWN = 3000;
+const scanLog = [];
+
+function initScannerPage() {
+  if (!BRANCH_ID) return;
+  loadScannerCounters();
+}
+
+async function loadScannerCounters() {
+  try {
+    const d = await api(`/attendance/dashboard/today?branch_id=${BRANCH_ID}`);
+    document.getElementById("sc-present").textContent = d.present;
+    document.getElementById("sc-late").textContent    = d.late;
+    document.getElementById("sc-absent").textContent  = d.absent;
+  } catch(_) {}
+}
+
+async function startQrScanner() {
+  if (scannerRunning) {
+    qrScanner.stop().catch(()=>{});
+    scannerRunning = false;
+    document.getElementById("scanner-start-btn").textContent = "📷 Start Camera Scanner";
+    document.getElementById("scanner-status").textContent = "Scanner stopped.";
+    return;
+  }
+
+  document.getElementById("scanner-start-btn").textContent = "⏹ Stop Scanner";
+  document.getElementById("scanner-status").textContent = "Starting camera…";
+
+  try {
+    if (qrScanner) { try { await qrScanner.stop(); } catch(_){} }
+    qrScanner = new Html5Qrcode("qr-reader");
+    await qrScanner.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 260, height: 260 } },
+      onQrScan,
+      () => {}
+    );
+    scannerRunning = true;
+    document.getElementById("scanner-status").textContent = "✅ Camera active — point at a student QR card";
+  } catch(e) {
+    document.getElementById("scanner-status").textContent = "❌ Camera error: " + e;
+    document.getElementById("scanner-start-btn").textContent = "📷 Start Camera Scanner";
+  }
+}
+
+async function onQrScan(token) {
+  const now = Date.now();
+  if (token === lastScanToken && now - lastScanTime < SCAN_COOLDOWN) return;
+  lastScanToken = token; lastScanTime = now;
+  try {
+    const res = await fetch(`${config.api}/attendance/scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${TOKEN}` },
+      body: JSON.stringify({ qr_token: token, branch_id: BRANCH_ID }),
+    });
+    const data = await res.json();
+    showScanResult(data);
+    loadScannerCounters();
+  } catch(e) {
+    showScanResult({ success: false, message: e.message });
+  }
+}
+
+function showScanResult(r) {
+  const card  = document.getElementById("scan-result-card");
+  card.style.display = "block";
+  card.className = "";
+  document.getElementById("sr-name").textContent = r.student_name || "Unknown";
+  document.getElementById("sr-meta").textContent = r.roll_number
+    ? `Roll: ${r.roll_number}  |  Class: ${r.class_name}` : (r.message || "");
+  document.getElementById("sr-time").textContent = r.check_in_time
+    ? "Check-in: " + new Date(r.check_in_time).toLocaleTimeString() : "";
+
+  const badge = document.getElementById("sr-badge");
+  if (r.already_scanned) {
+    card.classList.add("dup"); badge.className = "sr-badge dup"; badge.textContent = "Already Scanned";
+    playBeep(false);
+  } else if (!r.success) {
+    card.classList.add("err"); badge.className = "sr-badge err"; badge.textContent = "Invalid QR";
+    playBeep(false);
+  } else if (r.status === "late") {
+    card.classList.add("late"); badge.className = "sr-badge late"; badge.textContent = "Late";
+    playBeep(true);
+  } else {
+    card.classList.add("ok"); badge.className = "sr-badge ok"; badge.textContent = "Present ✓";
+    playBeep(true);
+  }
+
+  if (r.success && !r.already_scanned) {
+    scanLog.unshift({ name: r.student_name, roll: r.roll_number, status: r.status, time: new Date().toLocaleTimeString() });
+    renderScanLog();
+  }
+  clearTimeout(window._scanTimer);
+  window._scanTimer = setTimeout(() => { card.style.display = "none"; }, 4000);
+}
+
+function renderScanLog() {
+  document.getElementById("scan-log-list").innerHTML =
+    scanLog.slice(0, 8).map(s => `
+      <div class="scan-log-row">
+        <span><span class="slr-name">${s.name}</span>
+          <span style="color:var(--muted);margin-left:6px;font-size:11px">Roll: ${s.roll||"—"}</span></span>
+        <span>
+          <span class="badge badge-${s.status}" style="margin-right:8px">${s.status}</span>
+          <span class="slr-time">${s.time}</span>
+        </span>
+      </div>`).join("");
+}
+
+function playBeep(ok) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = ok ? 880 : 300; o.type = "sine";
+    g.gain.setValueAtTime(0.3, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    o.start(); o.stop(ctx.currentTime + 0.2);
+  } catch(_) {}
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function pctBar(pct) {
+  const cls = pct >= 75 ? "fill-green" : pct >= 50 ? "fill-orange" : "fill-red";
+  return `<div class="pct-bar"><div class="bar"><div class="fill ${cls}" style="width:${pct}%"></div></div><span style="font-size:12px;min-width:38px">${pct}%</span></div>`;
+}
+</script>
+</body>
+</html>

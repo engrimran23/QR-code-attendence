@@ -1,0 +1,60 @@
+========================================
+  QR Attend Mobile App — Build Guide
+========================================
+
+STEP 1: Set your server IP
+---------------------------
+Edit:  mobile/src/services/api.js
+Change:  export const API_BASE = "http://192.168.1.100:8082";
+To:      export const API_BASE = "http://<YOUR-PC-IP>:8082";
+
+Find your PC IP by running:  ipconfig
+Look for "IPv4 Address" under your WiFi adapter.
+Example: 192.168.1.5  →  http://192.168.1.5:8082
+
+The phone and PC must be on the SAME WiFi network.
+
+
+STEP 2: Test on your phone (free, instant)
+-------------------------------------------
+1. Install "Expo Go" app from Play Store / App Store on your phone
+2. Run in terminal:
+     cd mobile
+     npx expo start
+3. Scan the QR code shown in terminal with your phone camera
+4. App opens instantly — no install needed
+
+
+STEP 3: Build a real downloadable APK (Android)
+-------------------------------------------------
+1. Create free account at: https://expo.dev
+2. Run:
+     npm install -g eas-cli
+     eas login
+     eas build --platform android --profile preview
+3. Wait ~10-15 minutes — EAS builds in the cloud
+4. Download the .apk file from the link shown
+5. Share via WhatsApp/email — install on any Android phone
+
+
+STEP 4: Build for iPhone (iOS)
+--------------------------------
+Requires Apple Developer account ($99/year)
+Run:  eas build --platform ios --profile preview
+Or use Expo Go app for testing without a developer account.
+
+
+SCREENS IN THE APP:
+-------------------
+🏠 Today     — Live attendance summary (present/late/leave/absent)
+📷 Scan      — Camera QR scanner, works OFFLINE (saves & auto-syncs)
+🏖 Leave     — Teachers mark sick/urgent/other leave per student
+👤 Profile   — Account info, server URL, offline sync status
+
+
+OFFLINE MODE:
+-------------
+- No internet? Scans are saved on the device
+- Yellow badge shows pending sync count
+- Auto-syncs when connection returns
+- Manual sync button in Profile screen

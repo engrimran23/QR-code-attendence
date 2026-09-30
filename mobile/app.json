@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "QR Attend",
+    "slug": "qr-attend-school",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1F4E79"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        { "cameraPermission": "Allow QR Attend to access your camera to scan student QR codes." }
+      ]
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.qrattend.school",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Camera is needed to scan student QR codes for attendance."
+      }
+    },
+    "android": {
+      "package": "com.qrattend.school",
+      "permissions": ["CAMERA", "INTERNET", "ACCESS_NETWORK_STATE"],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1F4E79"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

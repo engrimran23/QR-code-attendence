@@ -1,0 +1,71 @@
+version: "3.9"
+
+services:
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       qr_attendance
+      POSTGRES_USER:     qr_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-StrongPass@2024}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qr_user -d qr_attendance"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL:                  postgresql://qr_user:${DB_PASSWORD:-StrongPass@2024}@db:5432/qr_attendance
+      SECRET_KEY:                    ${SECRET_KEY:-change-me-in-production-32-chars!!}
+      ALGORITHM:                     HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES:   60
+      REFRESH_TOKEN_EXPIRE_DAYS:     7
+      TWILIO_ACCOUNT_SID:            ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN:             ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_WHATSAPP_FROM:          ${TWILIO_WHATSAPP_FROM:-whatsapp:+14155238886}
+      ABSENT_ALERT_DELAY_MINUTES:    ${ABSENT_ALERT_DELAY_MINUTES:-30}
+      APP_NAME:                      QR Attendance System
+      DEBUG:                         "false"
+    volumes:
+      - qr_codes:/app/qr_codes
+      - ./scanner:/app/../scanner:ro
+      - ./dashboard:/app/../dashboard:ro
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - nginx_certs:/etc/nginx/certs
+
+volumes:
+  postgres_data:
+  qr_codes:
+  nginx_certs:
