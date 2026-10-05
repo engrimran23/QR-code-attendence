@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>QR Attend — School Attendance</title>
+    <meta name="description" content="QR Code based student attendance system for schools" />
+    <meta name="theme-color" content="#1F4E79" />
+
+    <!-- PWA manifest -->
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Icons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/icon-152.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192.png" />
+
+    <!-- iOS PWA meta tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="QR Attend" />
+
+    <!-- Android / Chrome meta tags -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="QR Attend" />
+
+    <!-- MS Tiles -->
+    <meta name="msapplication-TileImage" content="/icons/icon-144.png" />
+    <meta name="msapplication-TileColor" content="#1F4E79" />
+
+    <!-- Register service worker -->
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js").then((reg) => {
+            reg.addEventListener("updatefound", () => {
+              const worker = reg.installing;
+              worker.addEventListener("statechange", () => {
+                if (worker.state === "installed" && navigator.serviceWorker.controller) {
+                  worker.postMessage("SKIP_WAITING");
+                  window.location.reload();
+                }
+              });
+            });
+          });
+        });
+      }
+    </script>
+    <script type="module" crossorigin src="/assets/index-mVKRraqC.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
